@@ -1,0 +1,58 @@
+version: '3'
+
+silent: true
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  setup:
+    desc: Install dependencies and pre-commit hooks
+    cmds:
+      - uv sync
+      - uv run pre-commit install
+
+  test:
+    desc: Run the test suite
+    cmds:
+      - uv run pytest {{.CLI_ARGS}}
+
+  cov:
+    desc: Run tests with a detailed coverage report
+    cmds:
+      - uv run pytest --cov-report=term-missing --cov-report=html
+
+  lint:
+    desc: Run ruff and mypy
+    cmds:
+      - uv run ruff check .
+      - uv run ruff format --check .
+      - uv run mypy
+
+  fmt:
+    desc: Auto-fix lint and format the code
+    cmds:
+      - uv run ruff check --fix .
+      - uv run ruff format .
+
+  check:
+    desc: Full pre-merge check (lint + test)
+    deps: [lint, test]
+
+  sync-example:
+    desc: Dry-run the example sync (reads SpatiumDDI, writes to examples/out/)
+    cmds:
+      - uv run octodns-sync --config-file=examples/config.yaml
+
+  sync-example-apply:
+    desc: Apply the example sync (actually writes files)
+    cmds:
+      - uv run octodns-sync --config-file=examples/config.yaml --doit
+
+  clean:
+    desc: Remove caches and build artifacts
+    cmds:
+      - rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov dist build *.egg-info
+      - find . -type d -name __pycache__ -prune -exec rm -rf {} +

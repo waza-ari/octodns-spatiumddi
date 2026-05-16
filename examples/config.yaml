@@ -1,0 +1,80 @@
+---
+# Example octoDNS configuration.
+#
+# Reads zones from SpatiumDDI and writes them to YAML files under examples/out/.
+#
+# Dry run (shows the diff, writes nothing):
+#   SPATIUMDDI_URL=https://spatium.example.com \
+#   SPATIUMDDI_TOKEN=... \
+#   SPATIUMDDI_GROUP=production \
+#   uv run octodns-sync --config-file=examples/config.yaml
+#
+# Apply (writes per-zone YAML files):
+#   ... --doit
+
+providers:
+  spatiumddi:
+    class: octodns_spatiumddi.SpatiumDDISource
+
+    # Base URL of your SpatiumDDI instance (required, no trailing slash).
+    # Must use http:// or https://. Validated at startup.
+    url: env/SPATIUMDDI_URL
+
+    # Bearer token for SpatiumDDI's API (required).
+    # Use octoDNS' env/VAR interpolation so the secret stays out of YAML.
+    # The token is stored as pydantic.SecretStr and never logged.
+    token: env/SPATIUMDDI_TOKEN
+
+    # SpatiumDDI DNS group name (required).
+    # Looked up against /api/v1/dns/groups at startup; resolves to a UUID.
+    # Each source instance is scoped to one group. To pull from multiple
+    # groups, define one provider entry per group.
+    group: env/SPATIUMDDI_GROUP
+
+    # SpatiumDDI view name (Optional, default: unset).
+    # When set, only zones and records in this view are read.
+    # When unset, only zones and records with view_id=null are read —
+    # so leave this unset if you do not use views in SpatiumDDI.
+    # view: internal
+
+    # Disable TLS verification (Optional, default: false).
+    # Useful when SpatiumDDI is fronted by an internal CA whose root is not
+    # in the system trust store. Avoid in production.
+    # insecure: false
+
+    # Per-request timeout in seconds (Optional, default: 30).
+    # Applies to both connect and read phases of every API call.
+    # timeout: 30
+
+    # Retry budget for 5xx and connection errors (Optional, default: 3).
+    # Uses urllib3.Retry with exponential backoff. 4xx responses are not
+    # retried — those are surfaced immediately.
+    # retries: 3
+
+    # Include SpatiumDDI's auto-generated records (Optional, default: true).
+    # SpatiumDDI flags records it created itself (reverse PTRs spawned from
+    # IPAM, NS records derived from SOA, etc.) as `auto_generated=true`.
+    # Set false to exclude them from the octoDNS view of the zone.
+    # include_auto_generated: true
+
+    # Include records that are members of a load-balancing pool
+    # (Optional, default: false).
+    # SpatiumDDI's pool members carry `pool_member_id` and are managed by
+    # the pool, not addressed directly. Including them duplicates state
+    # owned by the pool. Leave off unless you know you need them.
+    # include_pool_members: false
+
+  yaml-out:
+    class: octodns.provider.yaml.YamlProvider
+    directory: examples/out
+    default_ttl: 3600
+    enforce_order: true
+
+zones:
+  # Add one entry per zone you want exported. The zone name must exactly
+  # match the zone's name in SpatiumDDI (octoDNS convention: trailing dot).
+  example.com.:
+    sources:
+      - spatiumddi
+    targets:
+      - yaml-out
