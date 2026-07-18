@@ -89,6 +89,35 @@ class SpatiumDDIClient:
             raise ValueError(f"GET {path} failed: {resp.status_code} {resp.text}")
         return resp.json()
 
+    def _get_paginated(self, path: str, *, page_size: int = 1000) -> list[Any]:
+        """Fetch every item from a possibly-paginated list endpoint.
+
+        Newer SpatiumDDI versions wrap list responses in a page envelope
+        ``{"items": [...], "total": N, "page": P, "page_size": S}``. Older
+        versions return a bare JSON array. This handles both, walking every
+        page so large zones are not silently truncated by the server-side
+        default page size.
+        """
+        items: list[Any] = []
+        page = 1
+        while True:
+            sep = "&" if "?" in path else "?"
+            data = self._get(f"{path}{sep}page={page}&page_size={page_size}")
+            if not isinstance(data, dict):
+                # Legacy bare-array response: no pagination to follow.
+                return list(data)
+            batch = data.get("items", [])
+            items.extend(batch)
+            total = data.get("total")
+            if not batch:
+                break
+            if total is not None and len(items) >= total:
+                break
+            if len(batch) < page_size:
+                break
+            page += 1
+        return items
+
     def list_groups(self) -> list[GroupSummary]:
         data = self._get("/api/v1/dns/groups")
         return [GroupSummary.model_validate(item) for item in data]
@@ -102,5 +131,5 @@ class SpatiumDDIClient:
         return [ZoneResponse.model_validate(item) for item in data]
 
     def list_records(self, group_id: UUID, zone_id: UUID) -> list[RecordResponse]:
-        data = self._get(f"/api/v1/dns/groups/{group_id}/zones/{zone_id}/records")
+        data = self._get_paginated(f"/api/v1/dns/groups/{group_id}/zones/{zone_id}/records")
         return [RecordResponse.model_validate(item) for item in data]
